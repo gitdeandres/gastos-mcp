@@ -1,0 +1,11 @@
+# Lista de permitidos: se excluye todo y solo entra lo necesario para construir.
+# Así nunca se cuela en la imagen el .env (IDs de hoja, token), el venv local ni .git.
+*
+!pyproject.toml
+!uv.lock
+!.python-version
+!src/
+
+# Dentro de lo permitido, fuera los restos de ejecuciones locales.
+**/__pycache__
+**/*.pyc
