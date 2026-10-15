@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Instalar uv (misma versión que en local y en el Dockerfile)
         run: |
           curl -LsSf https://astral.sh/uv/0.13.1/install.sh | sh
