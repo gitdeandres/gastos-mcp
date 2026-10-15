@@ -1,18 +1,29 @@
 # Despliegue en Cloud Run
 
-Guía del despliegue manual del MCP de Gastos. Recoge los comandos usados y
-los procedimientos de producción, vuelta atrás, rotación del token y diagnóstico.
+Guía del despliegue manual del MCP de Gastos. Recoge los comandos usados el 15/10/2026 (copia de pruebas y producción) y
+los procedimientos de despliegue de versiones nuevas, vuelta atrás, rotación del token y diagnóstico.
 
-Lo marcado como **propuesta** todavía no se ha ejecutado.
+Todo lo de esta guía se ha ejecutado salvo lo marcado como **propuesta** o **supuesto**.
 
-## Variables
+## Estado actual (15/10/2026)
+
+- Servicio `gastos-mcp`, `us-central1`, revisión `gastos-mcp-00002-mig` al 100 %, fijada **por nombre** (no sigue a "la última").
+  Apunta a la hoja de **producción**. Imagen `sha-7544edd7a437` (= `v0.2.0`).
+- Configuración: timeout 60 s, máximo 1 instancia a nivel de servicio, mínimo 0, `startup-cpu-boost`, cuenta `gastos-sheets`.
+- La revisión `gastos-mcp-00001-2xh` (copia de pruebas) está **borrada**. No hay ningún entorno de pruebas desplegado.
+- Etiqueta git `v0.2.0` sobre el commit `7544edd7a437`.
+
+## Variables (hay que volver a exportarlas en cada terminal nueva)
 
 ```bash
 export PROJECT_ID=gastos-mcp-server REGION=us-central1 REPO=gastos-mcp SECRET=gastos-mcp-token SERVICE=gastos-mcp
 export SA_EMAIL=gastos-sheets@${PROJECT_ID}.iam.gserviceaccount.com
 export IMAGE=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/gastos-mcp
+export SHORT=<12 caracteres del commit de la imagen>      # fijarlo a mano: main puede haber avanzado
 gcloud config set project $PROJECT_ID
 ```
+
+El aviso del "quota project" de las credenciales ADC al ejecutar `gcloud config set project` es inofensivo en local.
 
 ## 1. Infraestructura (una sola vez, ya hecho)
 
@@ -46,15 +57,23 @@ Presupuesto de alerta: consola de Facturación → Presupuestos y alertas (1 USD
 
 ## 2. Construir y subir una imagen
 
-Siempre desde un commit de `main` ya fusionado, en un worktree limpio.
+Solo si el código de la imagen cambió. Comprobarlo primero (el contexto de build es una lista de permitidos, `.dockerignore`):
+
+```bash
+git diff --stat <commit de la imagen actual> HEAD -- pyproject.toml uv.lock .python-version src Dockerfile
+```
+
+Si sale vacío, **no hace falta reconstruir**: se despliega la imagen que ya está en el registro (así se hizo el 15/10/2026,
+aunque `main` tenía un commit posterior de documentación). Si no, siempre desde un commit de `main` ya fusionado, en un
+worktree limpio:
 
 ```bash
 cd ~/Dev/gastos-mcp
 git fetch origin && git switch main && git pull --ff-only
 git rev-parse HEAD origin/main                # deben coincidir
-grep '^version' pyproject.toml                # versión que se va a etiquetar
+grep '^version' pyproject.toml                # versión que se va a etiquetar (subirla a mano antes)
 
-export VERSION=v0.2.0
+export VERSION=v0.2.1                          # la que corresponda
 export COMMIT=$(git rev-parse HEAD) SHORT=$(git rev-parse --short=12 HEAD)
 git worktree add --detach /tmp/gastos-build "$COMMIT"
 docker build --network=host \
@@ -70,7 +89,10 @@ gcloud artifacts docker images list "$IMAGE" --include-tags \
 
 `--network=host` solo hace falta en el equipo de Andrés (DNS de Docker).
 
-## 3. Desplegar contra la copia de pruebas (hecho, revisión `gastos-mcp-00001-2xh`)
+## 3. Primer despliegue, contra la copia de pruebas (hecho; la revisión `gastos-mcp-00001-2xh` ya no existe)
+
+Se conserva como referencia de cómo se creó el servicio (cuenta, secreto, límites). No repetirlo contra el servicio actual:
+`gcloud run deploy` sobre un servicio existente hereda su configuración.
 
 ```bash
 export TEST_SHEET=$(grep '^TEST_SPREADSHEET_ID=' .env | cut -d= -f2-)
@@ -83,13 +105,13 @@ gcloud run deploy $SERVICE \
   --labels=commit=$SHORT,env=test
 ```
 
-Comprobaciones:
+Comprobaciones (sirven también tras cualquier despliegue; con la URL de una etiqueta, sustituir `$URL`):
 
 ```bash
 gcloud run services describe $SERVICE --region=$REGION
 gcloud run revisions describe <REVISION> --region=$REGION --format='value(status.imageDigest)'
 gcloud run services describe $SERVICE --region=$REGION --format=export \
-  | grep -E "cpu-throttling|startup-cpu-boost|maxScale|minScale"
+  | grep -E "cpu-throttling|startup-cpu-boost|maxScale|minScale|timeoutSeconds"
 
 URL=$(gcloud run services describe $SERVICE --region=$REGION --format='value(status.url)')
 TOKEN=$(gcloud secrets versions access 1 --secret=$SECRET)
@@ -102,44 +124,99 @@ npx @modelcontextprotocol/inspector@latest --cli "$URL/mcp" --transport http \
 unset TOKEN
 ```
 
-## 4. Paso a producción (propuesta)
+## 4. Desplegar una versión nueva / paso a producción (ejecutado el 15/10/2026)
 
-El ID de la hoja de producción solo existe en Cloud Run: se escribe sin eco y nunca va al `.env`.
+Principio: revisión nueva **sin tráfico y con etiqueta**, prueba de **solo lecturas** por la URL de la etiqueta, migración a
+**esa** revisión y comprobación. Tras la migración el servicio queda fijado por nombre a una revisión: un
+`gcloud run deploy` o `gcloud run services update` sin migración explícita **no sale a producción**. Es deseado.
 
-1. Revisión nueva **sin tráfico** y con etiqueta, para probarla por su URL propia sin afectar a Claude:
+Durante la prueba puede haber dos instancias (las revisiones etiquetadas arrancan, pero solo cuentan para el máximo de
+instancias si forman parte de un reparto de tráfico, según la documentación de Cloud Run). Por eso la prueba es solo de
+lecturas y no se registran tickets desde Claude mientras dura.
 
-   ```bash
-   read -rs -p "ID hoja de PRODUCCIÓN: " PROD_SHEET; echo
-   gcloud run deploy $SERVICE --image="$IMAGE:sha-$SHORT" --region=$REGION \
-     --update-env-vars=SPREADSHEET_ID="$PROD_SHEET" \
-     --update-labels=env=prod --timeout=60 \
-     --no-traffic --tag=prod-check
-   unset PROD_SHEET
-   ```
+**0. Comprobaciones previas** (todas de solo lectura)
 
-   La documentación indica que una revisión etiquetada sin tráfico no cuenta para el máximo de instancias del servicio:
-   durante la prueba puede haber dos instancias. Por eso, en esta fase, **solo lecturas**.
+```bash
+gcloud artifacts docker images list "$IMAGE" --include-tags --format="table(version.basename(),tags,metadata.imageSizeBytes)"
+gcloud run services describe $SERVICE --region=$REGION --format='yaml(status.traffic,status.latestReadyRevisionName)'
+```
 
-2. Probar **solo lecturas** contra `https://prod-check---gastos-mcp-<…>.run.app/mcp` (la URL sale en el despliegue) con el
-   inspector: `list_categories` debe mostrar las categorías reales, no `__PRUEBA__`.
-3. Pasar el tráfico: `gcloud run services update-traffic $SERVICE --region=$REGION --to-latest` y quitar la etiqueta
-   (`--remove-tags=prod-check`).
-4. Probar desde Claude una lectura y, después, el primer ticket real.
-5. Crear y subir la etiqueta git, sobre el mismo commit de la imagen:
+**1. Revisión nueva sin tráfico y con etiqueta.** El primer paso a producción necesitó el ID de la hoja: solo existe en
+Cloud Run, se escribe sin eco y nunca va al `.env`:
 
-   ```bash
-   git tag -a v0.2.0 7544edd7a437 -m "v0.2.0: primer despliegue en Cloud Run"
-   git push origin v0.2.0
-   ```
+```bash
+read -rs -p "ID hoja de PRODUCCIÓN: " PROD_SHEET; echo
+gcloud run deploy $SERVICE --image="$IMAGE:sha-$SHORT" --region=$REGION \
+  --update-env-vars=SPREADSHEET_ID="$PROD_SHEET" \
+  --update-labels=env=prod --timeout=60 \
+  --no-traffic --tag=prod-check
+unset PROD_SHEET
+```
+
+En despliegues posteriores no hace falta repetir `--update-env-vars` ni `--timeout`: **supuesto** (gcloud hereda la
+configuración de la revisión actual). Comprobarlo antes de migrar, sin imprimir el ID:
+`gcloud run services describe $SERVICE --region=$REGION --format=export | grep -c SPREADSHEET_ID` (debe dar 1) y el
+`timeoutSeconds` de la plantilla. Al pegar salidas de `describe` en cualquier sitio, ocultar el ID de la hoja.
+
+**2. Comprobar el tráfico.** Debe mostrar la revisión anterior al 100 % y la nueva con `tag: prod-check` al 0 %. Si aparece
+`latestRevision: true` al 100 %, parar: producción recibiría tráfico sin haber sido probada.
+
+```bash
+gcloud run services describe $SERVICE --region=$REGION --format='yaml(status.traffic)'
+```
+
+**3. Probar solo lecturas** por la URL de la etiqueta (`https://prod-check---gastos-mcp-<hash>.<región>.run.app`, la imprime
+el deploy). Reutilizar `H` e `INIT` de la sección 3:
+
+```bash
+export CHECK_URL=<URL de la etiqueta, sin /mcp>
+TOKEN=$(gcloud secrets versions access 1 --secret=$SECRET)
+curl -s -o /dev/null -w "%{http_code}\n" -X POST "$CHECK_URL/mcp" "${H[@]}" -d "$INIT"                     # 401
+npx @modelcontextprotocol/inspector@latest --cli "$CHECK_URL/mcp" --transport http \
+  --header "authorization: Bearer $TOKEN" --method tools/call --tool-name list_categories > /tmp/cats.json
+grep -c '__PRUEBA__' /tmp/cats.json                                                                           # 0 en producción
+unset TOKEN
+```
+
+Cómo distinguir producción de la copia: la copia contenía filas de prueba (`__PRUEBA__`) y las categorías del ticket de
+prueba de PRIMAPRIX (Aceite de oliva, Mermelada, Tomate concentrado, Café, Té); producción no las tenía. Es un indicio
+indirecto: la confirmación fuerte es la primera escritura en la hoja real.
+
+**4. Migrar a la revisión probada** (con `--to-tags`, no `--to-latest`: este último apunta a la última revisión *creada*,
+que podría no ser la probada), quitar la etiqueta y volver a comprobar:
+
+```bash
+gcloud run services update-traffic $SERVICE --region=$REGION --to-tags=prod-check=100
+gcloud run services update-traffic $SERVICE --region=$REGION --remove-tags=prod-check
+gcloud run services describe $SERVICE --region=$REGION --format='yaml(status.traffic)'   # revisión nueva al 100 %, sin latestRevision
+gcloud run services describe $SERVICE --region=$REGION --format=export | grep -E "timeoutSeconds|maxScale|startup-cpu-boost|minScale"
+gcloud run services describe $SERVICE --region=$REGION | grep -i scaling                 # Auto (Min: 0, Max: 1)
+```
+
+**5. En Claude:** una lectura (sin aprobación) y un ticket pequeño. Comparar el `updated_range` devuelto con la última fila
+visible de la hoja y revisar fecha y euro, F y G vacías y nada por debajo de la última fila.
+
+**6. Etiqueta git** sobre el commit de la imagen (hecho para v0.2.0):
+
+```bash
+git tag -a v0.2.0 7544edd7a437 -m "v0.2.0: primer despliegue en Cloud Run"
+git push origin v0.2.0
+```
+
+**Primera ejecución (15/10/2026):** revisión `gastos-mcp-00002-mig`; antes del deploy el servicio tenía `latestRevision: true`
+y tras `--no-traffic` quedó fijado a `00001-2xh` (100 %); la prueba de lectura no mostró `__PRUEBA__`; primera escritura real
+en `A39:H43`. Después se borró `00001-2xh` (apuntaba a la copia).
 
 ### Volver atrás
 
-**Cuidado:** la revisión anterior (`gastos-mcp-00001-2xh`) apunta a la **copia de pruebas**. Devolverle el tráfico haría que
-los tickets se escribieran en la copia sin ningún aviso. Para volver atrás en producción:
+No queda ninguna revisión que apunte a la copia de pruebas (borrada). Opciones:
 
-- Problema de código: desplegar la imagen anterior con el ID de producción (`gcloud run deploy … --image=<sha anterior>`),
-  no mover el tráfico a una revisión de pruebas.
 - Corte inmediato sin escribir en ningún sitio: en Claude, desactivar el conector o poner la escritura en **Bloqueado**.
+- Problema de código: desplegar una imagen anterior por su etiqueta `sha-…` con este mismo procedimiento (sin tráfico,
+  etiqueta, prueba de lecturas, `--to-tags`). La revisión anterior sigue existiendo mientras no se borre:
+  `--to-revisions=<REVISION>=100` devuelve el tráfico a una revisión de producción. Antes de hacerlo, comprobar con
+  `describe` que esa revisión apunta a producción (que `SPREADSHEET_ID` es el de producción y no el de la copia, sin
+  imprimir el valor en pantallas compartidas).
 
 ## 5. Conector en Claude
 
@@ -155,12 +232,17 @@ los tickets se escribieran en la copia sin ningún aviso. Para volver atrás en 
    transmisible.
 5. Vaciar el portapapeles: `printf '' | xclip -selection clipboard`.
 6. Permisos: herramientas de solo lectura en **Permitir siempre**; "Escribir los ítems de un ticket en la hoja" en
-   **Requiere aprobación**. En el diálogo de aprobación, nunca "Permitir siempre".
+   **Requiere aprobación**. En el diálogo de aprobación, pulsar siempre **Permitir una vez**, nunca "Permitir siempre".
 
 ## 6. Rotación del token
 
 No hay ventana sin corte: el servidor acepta un solo token, y la autenticación del conector no se puede editar.
 Durante unos minutos Claude recibirá 401.
+
+**Atención:** como el servicio queda fijado por nombre a una revisión (sección 4), una revisión nueva creada con
+`services update` **no recibe tráfico** y seguiría sirviendo la versión anterior del secreto. Hay que migrar el tráfico
+explícitamente (paso 3). **Supuesto** basado en la documentación de Cloud Run sobre el reparto de tráfico; no probado con
+una rotación real: comprobar el tráfico con `describe` antes de cambiar el conector.
 
 ```bash
 # 1. Versión nueva del secreto
@@ -169,12 +251,18 @@ python3 -c 'import secrets, sys; sys.stdout.write(secrets.token_urlsafe(32))' \
 gcloud secrets versions list $SECRET                        # anotar el número nuevo (N)
 gcloud secrets versions access N --secret=$SECRET | wc -c   # 43
 
-# 2. Revisión nueva con la versión N (el token anterior deja de valer al terminar las instancias viejas)
+# 2. Revisión nueva con la versión N
 gcloud run services update $SERVICE --region=$REGION --update-secrets=MCP_AUTH_TOKEN=$SECRET:N
+
+# 3. Esa revisión no tiene tráfico: migrarlo a ella
+NEW=$(gcloud run services describe $SERVICE --region=$REGION --format='value(status.latestCreatedRevisionName)')
+echo $NEW                                                   # debe ser la que se acaba de crear
+gcloud run services update-traffic $SERVICE --region=$REGION --to-revisions=$NEW=100
+gcloud run services describe $SERVICE --region=$REGION --format='yaml(status.traffic)'
 ```
 
-3. En Claude: quitar el conector y volver a añadirlo con el valor nuevo (sección 5), y repetir los permisos.
-4. Comprobar una lectura desde Claude y destruir la versión anterior (las destruidas no se cobran):
+4. En Claude: quitar el conector y volver a añadirlo con el valor nuevo (sección 5), y repetir los permisos.
+5. Comprobar una lectura desde Claude y destruir la versión anterior (las destruidas no se cobran):
 
    ```bash
    gcloud secrets versions destroy <N-1> --secret=$SECRET
@@ -194,7 +282,10 @@ gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.serv
 - **Instancia apagada:** el último `Finished server process` es posterior a la última petición. Arranque en frío: unos 7 s.
 - **Claude conecta bien:** peticiones `Claude-User` con 200. Los errores de herramienta (duplicado) también son 200: el error
   va dentro de la respuesta JSON-RPC.
+- **Tras un fallo o un tiempo agotado en `append_receipt_items`:** llamar a `check_receipt` antes de reintentar. El servidor
+  rechaza el duplicado, pero conviene saber si la primera escritura llegó a hacerse.
 - **La cabecera no llega o es incorrecta** ("Couldn't reach the MCP server"): con el conector ya creado aparecen 401 en
   `POST /mcp` y en `/.well-known/oauth-protected-resource…` / `oauth-authorization-server`. El 401 es idéntico si falta
-  la cabecera o si el token es incorrecto (D35). Antes de pasar a la opción B de D12: volver a crear el conector
-  comprobando el prefijo `Bearer `, y si persiste, registrar en el middleware el motivo del rechazo (sin el valor).
+  la cabecera o si el token es incorrecto (el servidor no distingue ni delata rutas). Antes de pasar a OAuth (alternativa
+  prevista si Anthropic retirara las cabeceras de solicitud): volver a crear el conector comprobando el prefijo
+  `Bearer `, y si persiste, registrar en el middleware el motivo del rechazo (sin el valor).
