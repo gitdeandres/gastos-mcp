@@ -5,7 +5,7 @@ los procedimientos de despliegue de versiones nuevas, vuelta atrás, rotación d
 
 Todo lo de esta guía se ha ejecutado salvo lo marcado como **propuesta** o **supuesto**.
 
-## Estado actual (15/10/2026)
+## Estado tras el primer despliegue (15/10/2026, a modo de ejemplo)
 
 - Servicio `gastos-mcp`, `us-central1`, revisión `gastos-mcp-00002-mig` al 100 %, fijada **por nombre** (no sigue a "la última").
   Apunta a la hoja de **producción**. Imagen `sha-7544edd7a437` (= `v0.2.0`).
@@ -16,7 +16,8 @@ Todo lo de esta guía se ha ejecutado salvo lo marcado como **propuesta** o **su
 ## Variables (hay que volver a exportarlas en cada terminal nueva)
 
 ```bash
-export PROJECT_ID=gastos-mcp-server REGION=us-central1 REPO=gastos-mcp SECRET=gastos-mcp-token SERVICE=gastos-mcp
+# Sustituye TU-PROYECTO-GCP por el ID de tu proyecto de Google Cloud (el resto son nombres sugeridos).
+export PROJECT_ID=TU-PROYECTO-GCP REGION=us-central1 REPO=gastos-mcp SECRET=gastos-mcp-token SERVICE=gastos-mcp
 export SA_EMAIL=gastos-sheets@${PROJECT_ID}.iam.gserviceaccount.com
 export IMAGE=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/gastos-mcp
 export SHORT=<12 caracteres del commit de la imagen>      # fijarlo a mano: main puede haber avanzado
@@ -68,7 +69,7 @@ aunque `main` tenía un commit posterior de documentación). Si no, siempre desd
 worktree limpio:
 
 ```bash
-cd ~/Dev/gastos-mcp
+cd <ruta de tu clon del repositorio>
 git fetch origin && git switch main && git pull --ff-only
 git rev-parse HEAD origin/main                # deben coincidir
 grep '^version' pyproject.toml                # versión que se va a etiquetar (subirla a mano antes)
@@ -87,7 +88,7 @@ gcloud artifacts docker images list "$IMAGE" --include-tags \
   --format="table(version.basename(),tags,metadata.imageSizeBytes)"
 ```
 
-`--network=host` solo hace falta en el equipo de Andrés (DNS de Docker).
+`--network=host` solo hace falta si el DNS de tu Docker no resuelve dentro de los contenedores (en el equipo del autor era así).
 
 ## 3. Primer despliegue, contra la copia de pruebas (hecho; la revisión `gastos-mcp-00001-2xh` ya no existe)
 
@@ -178,9 +179,9 @@ grep -c '__PRUEBA__' /tmp/cats.json                                             
 unset TOKEN
 ```
 
-Cómo distinguir producción de la copia: la copia contenía filas de prueba (`__PRUEBA__`) y las categorías del ticket de
-prueba de PRIMAPRIX (Aceite de oliva, Mermelada, Tomate concentrado, Café, Té); producción no las tenía. Es un indicio
-indirecto: la confirmación fuerte es la primera escritura en la hoja real.
+Cómo distinguir producción de la copia: la copia contenía filas de prueba (`__PRUEBA__`) y las categorías de un ticket de
+prueba; producción no las tenía. Es un indicio indirecto: la confirmación fuerte es la primera escritura en la
+hoja real.
 
 **4. Migrar a la revisión probada** (con `--to-tags`, no `--to-latest`: este último apunta a la última revisión *creada*,
 que podría no ser la probada), quitar la etiqueta y volver a comprobar:
