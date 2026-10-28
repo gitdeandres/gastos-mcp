@@ -1,0 +1,12 @@
+# Solo las acciones de GitHub: están fijadas por SHA y no se actualizarían solas.
+# Las dependencias de Python no tienen aquí "version updates": las alertas y las
+# actualizaciones de seguridad de Dependabot se activan en los ajustes del repositorio.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
