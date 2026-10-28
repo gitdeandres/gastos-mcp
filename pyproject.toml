@@ -2,6 +2,9 @@
 name = "gastos-mcp"
 version = "0.2.0"
 description = "MCP de Gastos: registro y consulta de precios de supermercado en Google Sheets"
+# Expresión SPDX (PEP 639). No se declara `license-files` ni `readme`: el build de la imagen solo ve
+# pyproject.toml, uv.lock, .python-version y src/ (.dockerignore), y un fichero declarado que falte lo rompería.
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     # SDK oficial v2.
@@ -23,7 +26,11 @@ requires = ["uv_build>=0.13,<0.14"]
 build-backend = "uv_build"
 
 [dependency-groups]
-dev = ["pytest>=8", "httpx>=0.27"]
+dev = [
+    "pytest>=8",
+    "httpx>=0.27",
+    "ruff>=0.17.3",
+]
 
 [tool.ruff]
 line-length = 120
