@@ -26,11 +26,15 @@ No hay herramientas para editar ni borrar filas.
 
 1. Una hoja de Google Sheets con una pestaña llamada exactamente `Gastos - Supermercado` y estas columnas:
 
-   | A | B | C | D | E | F | G | H |
-   |---|---|---|---|---|---|---|---|
-   | No. de factura | Fecha | Comercio | Nombre del ítem (como en el ticket) | Clasificación | Pack | Descripción | Precio unitario |
+   | A | B | C | D | E | F | G | H | I |
+   |---|---|---|---|---|---|---|---|---|
+   | No. de factura | Fecha | Comercio | Nombre del ítem (como en el ticket) | Clasificación | Pack | Descripción | Precio unitario | Precio total |
 
-   El servidor solo valida que `A1` sea `No. de factura`. Escribe A a E y H; F y G se rellenan a mano.
+   El servidor solo valida que `A1` sea `No. de factura`. Escribe A a E, H e I; F y G se rellenan a mano.
+
+   El precio total (I) se captura del ticket, no se calcula: es el importe de la línea con el descuento ya aplicado
+   y es obligatorio en `append_receipt_items`. En productos al peso, el unitario es el precio por kg y el total lo
+   cobrado; "2x 2.55" es una sola fila con unitario 2.55 y total 5.10. El servidor no comprueba que cuadren.
    Si tu hoja es distinta, ver "Si cambia la estructura de la hoja".
 2. Un proyecto de Google Cloud con la API de Sheets habilitada y una cuenta de servicio con acceso de Editor a la hoja.
    No se usan archivos de clave: en local, impersonación; en Cloud Run, la cuenta asociada al servicio.

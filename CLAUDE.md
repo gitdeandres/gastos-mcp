@@ -28,7 +28,7 @@ Capas en `src/gastos_mcp/`, de abajo arriba:
 - `auth.py`: middleware ASGI de token Bearer (comparación en tiempo constante, 401 vacío en cualquier ruta, valida el token al arrancar).
 - `server.py`: las 4 herramientas MCP (`check_receipt`, `append_receipt_items`, `search_prices`, `list_categories`), `build_app` y el arranque con uvicorn.
 
-Invariantes de diseño: solo se añaden filas (no hay editar ni borrar); la escritura usa `RAW` para que nada se interprete como fórmula o fecha; el servidor escribe las columnas A–E y H, y F (Pack) y G (Descripción) se rellenan a mano.
+Invariantes de diseño: solo se añaden filas (no hay editar ni borrar); la escritura usa `RAW` para que nada se interprete como fórmula o fecha; el servidor escribe las columnas A–E, H e I, y F (Pack) y G (Descripción) se rellenan a mano.
 
 ## Cambiar el esquema de la hoja
 
