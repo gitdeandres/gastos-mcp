@@ -167,6 +167,7 @@ class GastosService:
                         item_name=item.item_name,
                         category=canonical[key],
                         unit_price=item.unit_price,
+                        total_price=item.total_price,
                     )
                 )
             updated_range = self._repository.append_rows(new_rows)

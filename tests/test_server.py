@@ -18,7 +18,7 @@ VALID_RECEIPT: dict[str, Any] = {
     "invoice_number": "000123",
     "purchase_date": "2026-10-14",
     "merchant": "Lidl",
-    "items": [{"item_name": "SENSE LACTOSA SEMIDE", "category": "leche", "unit_price": 0.94}],
+    "items": [{"item_name": "SENSE LACTOSA SEMIDE", "category": "leche", "unit_price": 0.94, "total_price": 1.88}],
 }
 
 
@@ -91,9 +91,9 @@ async def test_list_categories_returns_the_existing_ones() -> None:
     "change",
     [
         {"items": []},
-        {"items": [{"item_name": "X", "category": "Leche", "unit_price": -1}]},
-        {"items": [{"item_name": "X", "category": "Leche", "unit_price": 1.234}]},
-        {"items": [{"item_name": "", "category": "Leche", "unit_price": 1}]},
+        {"items": [{"item_name": "X", "category": "Leche", "unit_price": -1, "total_price": 1}]},
+        {"items": [{"item_name": "X", "category": "Leche", "unit_price": 1.234, "total_price": 1}]},
+        {"items": [{"item_name": "", "category": "Leche", "unit_price": 1, "total_price": 1}]},
         {"purchase_date": "14/10/2026"},
         {"invoice_number": "   "},
     ],
@@ -104,6 +104,19 @@ async def test_invalid_input_is_rejected_without_writing(change: dict[str, Any])
         result = await client.call_tool("append_receipt_items", {**VALID_RECEIPT, **change})
     assert result.is_error is True
     assert repository.read_rows() == []
+
+
+async def test_missing_total_price_is_rejected_and_search_returns_it() -> None:
+    client, repository = make_client()
+    item_without_total = {"item_name": "X", "category": "Leche", "unit_price": 1}
+    async with client:
+        rejected = await client.call_tool("append_receipt_items", {**VALID_RECEIPT, "items": [item_without_total]})
+        await client.call_tool("append_receipt_items", VALID_RECEIPT)
+        searched = await client.call_tool("search_prices", {"category": "Leche"})
+    assert rejected.is_error is True
+    assert len(repository.read_rows()) == 1
+    assert searched.structured_content is not None
+    assert searched.structured_content["rows"][0]["total_price"] == 1.88
 
 
 async def test_search_without_query_or_category_is_an_error() -> None:

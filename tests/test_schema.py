@@ -21,47 +21,49 @@ from gastos_mcp.repository import (
 from gastos_mcp.service import GastosService
 
 
-def test_columns_are_the_eight_sheet_columns_in_order() -> None:
+def test_columns_are_the_nine_sheet_columns_in_order() -> None:
     assert [column.name for column in Column] == [
         "INVOICE_NUMBER", "PURCHASE_DATE", "MERCHANT", "ITEM_NAME", "CATEGORY", "PACK", "DESCRIPTION", "UNIT_PRICE",
+        "TOTAL_PRICE",
     ]  # fmt: skip
-    assert [column.letter for column in Column] == list("ABCDEFGH")
+    assert [column.letter for column in Column] == list("ABCDEFGHI")
 
 
 def test_column_values_are_contiguous_from_zero() -> None:
     # Sin huecos ni repetidos: son índices directos sobre la lista de celdas.
-    assert [column.value for column in Column] == list(range(8))
+    assert [column.value for column in Column] == list(range(9))
 
 
 def test_derived_constants_match_the_real_sheet_layout() -> None:
-    assert COLUMN_COUNT == 8
-    assert A1_RANGE == "'Gastos - Supermercado'!A:H"
+    assert COLUMN_COUNT == 9
+    assert A1_RANGE == "'Gastos - Supermercado'!A:I"
 
 
 def test_in_memory_repository_reports_ranges_like_the_sheet() -> None:
     repository = InMemoryRepository()
-    assert repository.append_rows([make_row(), make_row()]) == "'Gastos - Supermercado'!A2:H3"
-    assert repository.append_rows([make_row()]) == "'Gastos - Supermercado'!A4:H4"
+    assert repository.append_rows([make_row(), make_row()]) == "'Gastos - Supermercado'!A2:I3"
+    assert repository.append_rows([make_row()]) == "'Gastos - Supermercado'!A4:I4"
 
 
 def test_row_to_cells_places_each_value_in_its_column() -> None:
-    cells = row_to_cells(make_row(invoice_number="X", purchase_date=date(1899, 12, 31), unit_price=2.5))
+    cells = row_to_cells(make_row(invoice_number="X", purchase_date=date(1899, 12, 31), unit_price=2.5, total_price=5.0))
     assert len(cells) == COLUMN_COUNT
     assert cells[Column.INVOICE_NUMBER] == "X"
     assert cells[Column.PURCHASE_DATE] == 1
     assert cells[Column.UNIT_PRICE] == 2.5
+    assert cells[Column.TOTAL_PRICE] == 5.0
     assert cells[Column.PACK] == "" and cells[Column.DESCRIPTION] == ""
 
 
 def test_parse_and_write_use_the_same_column_positions() -> None:
     # Lo que se escribe, leído de vuelta con el parser, devuelve los mismos valores.
-    original = make_row(invoice_number="000123", purchase_date=date(2026, 10, 14), unit_price=0.94)
-    header = ["No. de factura"] + [""] * 7
+    original = make_row(invoice_number="000123", purchase_date=date(2026, 10, 14), unit_price=0.94, total_price=1.88)
+    header = ["No. de factura"] + [""] * 8
     parsed = parse_sheet_values([header, row_to_cells(original)])[0]
     assert (parsed.invoice_number, parsed.purchase_date, parsed.merchant, parsed.item_name) == (
         "000123", date(2026, 10, 14), "Lidl", "LLET",
     )  # fmt: skip
-    assert (parsed.category, parsed.unit_price) == ("Leche", 0.94)
+    assert (parsed.category, parsed.unit_price, parsed.total_price) == ("Leche", 0.94, 1.88)
 
 
 def test_default_search_limit_is_ten_and_within_the_maximum() -> None:

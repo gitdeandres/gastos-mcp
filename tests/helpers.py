@@ -15,6 +15,7 @@ def make_row(**overrides: Any) -> SheetRow:
         "item_name": "LLET",
         "category": "Leche",
         "unit_price": 1.0,
+        "total_price": 1.0,
     }
     return SheetRow(**{**defaults, **overrides})
 
@@ -41,7 +42,7 @@ class FakeSheetsService:
     def __init__(
         self,
         values: list[list[Any]] | None = None,
-        updated_range: str = "'Gastos - Supermercado'!A5:H6",
+        updated_range: str = "'Gastos - Supermercado'!A5:I6",
         error: Exception | None = None,
     ) -> None:
         self.calls: list[dict[str, Any]] = []
