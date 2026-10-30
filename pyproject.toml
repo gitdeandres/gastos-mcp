@@ -1,6 +1,6 @@
 [project]
 name = "gastos-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "MCP de Gastos: registro y consulta de precios de supermercado en Google Sheets"
 # Expresión SPDX (PEP 639). No se declara `license-files` ni `readme`: el build de la imagen solo ve
 # pyproject.toml, uv.lock, .python-version y src/ (.dockerignore), y un fichero declarado que falte lo rompería.

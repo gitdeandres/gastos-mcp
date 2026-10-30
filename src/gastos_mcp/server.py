@@ -100,10 +100,15 @@ def create_server(service: GastosService) -> MCPServer:
             Field(description="Solo true si el usuario confirmó que es otro ticket con la misma numeración."),
         ] = False,
     ) -> AppendResult:
-        """Añade al final de la hoja las filas de un ticket, una por ítem (columnas A, B, C, D, E
-        y H; F y G quedan vacías). Rechaza el ticket si ya existe la misma factura del mismo
-        comercio. Escritura que este servidor no puede deshacer (no hay herramienta para editar ni
-        borrar): debe invocarse solo tras la aprobación explícita del usuario sobre los datos."""
+        """Añade al final de la hoja las filas de un ticket, una por ítem (columnas A, B, C, D, E,
+        H e I; F y G quedan vacías). unit_price es el precio unitario y total_price el importe de
+        la línea tal como lo imprime el ticket, con el descuento de línea ya aplicado; el servidor
+        no lo calcula ni lo comprueba. Productos al peso: unitario = precio por kg, total = lo
+        cobrado. "2x 2.55": una sola fila con unitario 2.55 y total 5.10. Si el ticket no deja
+        claro el total de una línea, pregunta al usuario; no lo adivines. Rechaza el ticket si ya
+        existe la misma factura del mismo comercio. Escritura que este servidor no puede deshacer
+        (no hay herramienta para editar ni borrar): debe invocarse solo tras la aprobación
+        explícita del usuario sobre los datos."""
         with _as_tool_errors():
             return service.append_receipt(invoice_number, purchase_date, merchant, items, allow_existing_invoice)
 

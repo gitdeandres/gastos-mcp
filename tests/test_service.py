@@ -6,12 +6,13 @@ from datetime import date
 
 import pytest
 from helpers import make_row
+from pydantic import ValidationError
 
 from gastos_mcp.models import ReceiptItem, SheetRow
 from gastos_mcp.repository import InMemoryRepository
 from gastos_mcp.service import DuplicateReceiptError, GastosService, normalize
 
-MILK = ReceiptItem(item_name="SENSE LACTOSA SEMIDE", category="Leche", unit_price=0.94)
+MILK = ReceiptItem(item_name="SENSE LACTOSA SEMIDE", category="Leche", unit_price=0.94, total_price=1.88)
 
 
 def service_with(*rows: SheetRow) -> tuple[GastosService, InMemoryRepository]:
@@ -116,7 +117,7 @@ def test_append_same_invoice_other_merchant_is_allowed() -> None:
 def test_append_reuses_existing_category_spelling() -> None:
     service, repository = service_with(make_row(category="Leche"), make_row(category="Leche"))
     result = service.append_receipt(
-        "B-1", date(2026, 10, 6), "Lidl", [ReceiptItem(item_name="LLET", category="leche", unit_price=1.0)]
+        "B-1", date(2026, 10, 6), "Lidl", [ReceiptItem(item_name="LLET", category="leche", unit_price=1.0, total_price=1.0)]
     )
     assert result.new_categories == []
     assert repository.read_rows()[-1].category == "Leche"
@@ -125,9 +126,9 @@ def test_append_reuses_existing_category_spelling() -> None:
 def test_append_reports_each_new_category_once() -> None:
     service, _ = service_with(make_row(category="Leche"))
     items = [
-        ReceiptItem(item_name="A", category="Pescado", unit_price=1.0),
-        ReceiptItem(item_name="B", category="pescado", unit_price=2.0),
-        ReceiptItem(item_name="C", category="Leche", unit_price=3.0),
+        ReceiptItem(item_name="A", category="Pescado", unit_price=1.0, total_price=1.0),
+        ReceiptItem(item_name="B", category="pescado", unit_price=2.0, total_price=2.0),
+        ReceiptItem(item_name="C", category="Leche", unit_price=3.0, total_price=3.0),
     ]
     result = service.append_receipt("B-1", date(2026, 10, 6), "Lidl", items)
     assert result.new_categories == ["Pescado"]
@@ -309,3 +310,36 @@ def test_list_categories_merges_spellings_and_counts_usage() -> None:
         make_row(category=""),
     )
     assert [(c.name, c.count) for c in service.list_categories()] == [("Cafè", 2), ("Leche", 3), ("Pescado", 1)]
+
+
+# --- total_price ------------------------------------------------------------------
+
+
+def test_total_price_is_written_as_captured_and_read_back() -> None:
+    service, repository = service_with()
+    # 3x2: el total del ticket no es unitario × entero y se respeta tal cual.
+    item = ReceiptItem(item_name="YOGUR", category="Yogur", unit_price=0.5, total_price=0.99)
+    result = service.append_receipt("T-1", date(2026, 10, 6), "Lidl", [item])
+    assert result.rows[0].total_price == 0.99
+    assert repository.read_rows()[0].total_price == 0.99
+
+
+def test_old_rows_without_total_are_searchable() -> None:
+    service, _ = service_with(make_row(total_price=None))
+    assert service.search_prices(category="Leche").rows[0].total_price is None
+
+
+@pytest.mark.parametrize("total", [0, 10000])
+def test_receipt_item_accepts_total_limits(total: float) -> None:
+    assert ReceiptItem(item_name="X", category="Leche", unit_price=1, total_price=total).total_price == total
+
+
+@pytest.mark.parametrize("total", [-0.01, 10000.01, 1.234])
+def test_receipt_item_rejects_invalid_totals(total: float) -> None:
+    with pytest.raises(ValidationError):
+        ReceiptItem(item_name="X", category="Leche", unit_price=1, total_price=total)
+
+
+def test_receipt_item_requires_total_price() -> None:
+    with pytest.raises(ValidationError):
+        ReceiptItem(item_name="X", category="Leche", unit_price=1)  # type: ignore[call-arg]

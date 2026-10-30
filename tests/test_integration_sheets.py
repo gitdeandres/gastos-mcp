@@ -54,8 +54,8 @@ def test_written_rows_keep_their_types_and_format(spreadsheet_id: str) -> None:
     invoice = f"000{int(time.time())}"  # numérica y con ceros a la izquierda, distinta en cada ejecución
     receipt_date = date(2026, 10, 5)
     items = [
-        ReceiptItem(item_name="=1+1", category="__PRUEBA__", unit_price=0.01),
-        ReceiptItem(item_name="+PROTEINA 100%", category="__PRUEBA__", unit_price=1.5),
+        ReceiptItem(item_name="=1+1", category="__PRUEBA__", unit_price=0.01, total_price=0.03),
+        ReceiptItem(item_name="+PROTEINA 100%", category="__PRUEBA__", unit_price=1.5, total_price=4.5),
     ]
 
     result = service.append_receipt(invoice, receipt_date, "__PRUEBA__", items)
@@ -75,6 +75,7 @@ def test_written_rows_keep_their_types_and_format(spreadsheet_id: str) -> None:
     assert raw[1][3] == "+PROTEINA 100%"
     assert raw[0][4] == "__PRUEBA__"
     assert raw[0][7] == 0.01 and raw[1][7] == 1.5, "el precio debe ser numérico"
+    assert raw[0][8] == 0.03 and raw[1][8] == 4.5, "el precio total (columna I) debe ser numérico"
     assert shown[0][1] != str(date_to_serial(receipt_date)), "la fecha debe verse con formato de fecha, no como número"
     assert "€" in shown[0][7], "el precio debe verse con formato de euro"
 

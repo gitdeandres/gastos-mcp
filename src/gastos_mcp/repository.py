@@ -35,7 +35,7 @@ SHEETS_EPOCH = date(1899, 12, 30)
 
 
 class Column(IntEnum):
-    """Columnas de la pestaña, en el orden en que aparecen en la hoja (A a H).
+    """Columnas de la pestaña, en el orden en que aparecen en la hoja (A a I).
 
     Única fuente de verdad del esquema: el número de columnas, la letra de la última y el
     rango A1 se derivan de aquí, y el resto del código accede a las celdas por nombre y no
@@ -51,6 +51,7 @@ class Column(IntEnum):
     PACK = 5
     DESCRIPTION = 6
     UNIT_PRICE = 7
+    TOTAL_PRICE = 8
 
     @property
     def letter(self) -> str:
@@ -168,6 +169,7 @@ def parse_sheet_values(values: list[list[Any]]) -> list[SheetRow]:
                 pack=_parse_number(cells[Column.PACK], row_number),
                 description=_text(cells[Column.DESCRIPTION]),
                 unit_price=_parse_number(cells[Column.UNIT_PRICE], row_number),
+                total_price=_parse_number(cells[Column.TOTAL_PRICE], row_number),
             )
         )
     return rows
@@ -178,12 +180,12 @@ def row_to_cells(row: SheetRow) -> list[Any]:
 
     Se escribe con `RAW`, así que cada valor conserva el tipo JSON que tiene aquí:
     el nº de factura es texto (no pierde ceros), la fecha es un número de serie y
-    el precio es un número. Con `RAW` Sheets no interpreta nada (ni fechas según el
+    los precios son números. Con `RAW` Sheets no interpreta nada (ni fechas según el
     idioma de la hoja ni fórmulas en un nombre de ítem que empiece por "=").
     Pack y descripción quedan vacíos: se rellenan manualmente.
     """
-    if row.purchase_date is None or row.unit_price is None:
-        raise ValueError("Una fila nueva necesita fecha y precio.")
+    if row.purchase_date is None or row.unit_price is None or row.total_price is None:
+        raise ValueError("Una fila nueva necesita fecha, precio unitario y precio total.")
     # Se parte de celdas vacías y se rellena por nombre: el orden lo dicta `Column`,
     # no el orden en que se escriben estas líneas.
     cells: list[Any] = [""] * COLUMN_COUNT
@@ -193,6 +195,7 @@ def row_to_cells(row: SheetRow) -> list[Any]:
     cells[Column.ITEM_NAME] = row.item_name
     cells[Column.CATEGORY] = row.category
     cells[Column.UNIT_PRICE] = row.unit_price
+    cells[Column.TOTAL_PRICE] = row.total_price
     return cells
 
 
@@ -320,6 +323,7 @@ def demo_rows() -> list[SheetRow]:
             pack=1,
             description="Harina de trigo - 1 Kg",
             unit_price=0.71,
+            total_price=0.71,
         ),
         SheetRow(
             invoice_number="L-1001",
@@ -330,6 +334,7 @@ def demo_rows() -> list[SheetRow]:
             pack=1,
             description="Leche semidescremada sin lactosa - 1 L",
             unit_price=0.94,
+            total_price=1.88,
         ),
         SheetRow(
             invoice_number="B-2002",
@@ -338,6 +343,7 @@ def demo_rows() -> list[SheetRow]:
             item_name="MANTEGA SENSE SAL 250G",
             category="Mantequilla",
             unit_price=2.45,
+            total_price=2.45,
         ),
         SheetRow(
             invoice_number="L-1003",
@@ -346,5 +352,6 @@ def demo_rows() -> list[SheetRow]:
             item_name="MANTEGA 250G",
             category="Mantequilla",
             unit_price=2.19,
+            total_price=2.19,
         ),
     ]

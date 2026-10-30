@@ -45,10 +45,24 @@ class ReceiptItem(BaseModel):
     ]
     unit_price: Annotated[
         float,
-        Field(ge=0, le=10000, description="Precio unitario pagado (descuento aplicado), sin símbolo de moneda."),
+        Field(
+            ge=0,
+            le=10000,
+            description="Precio unitario pagado (descuento aplicado), sin símbolo de moneda. "
+            "En productos al peso, el precio por kg.",
+        ),
+    ]
+    total_price: Annotated[
+        float,
+        Field(
+            ge=0,
+            le=10000,
+            description="Importe de la línea tal como lo imprime el ticket (descuento de línea aplicado), "
+            "sin símbolo de moneda. Cópialo del ticket, no lo calcules.",
+        ),
     ]
 
-    @field_validator("unit_price")
+    @field_validator("unit_price", "total_price")
     @classmethod
     def _at_most_two_decimals(cls, value: float) -> float:
         """Los tickets están en euros: más de dos decimales indica un error de lectura."""
@@ -58,7 +72,7 @@ class ReceiptItem(BaseModel):
 
 
 class SheetRow(BaseModel):
-    """Una fila de la hoja (columnas A a H)."""
+    """Una fila de la hoja (columnas A a I)."""
 
     row_number: int | None = Field(default=None, description="Número de fila en la hoja (solo en filas leídas).")
     invoice_number: str = Field(default="", description="Vacío en los registros anteriores a la estructura nueva.")
@@ -69,6 +83,9 @@ class SheetRow(BaseModel):
     pack: float | None = Field(default=None, description="Columna F: unidades por paquete.")
     description: str = Field(default="", description="Columna G: descripción.")
     unit_price: float | None = Field(default=None, description="Precio unitario en euros.")
+    total_price: float | None = Field(
+        default=None, description="Columna I: importe de la línea del ticket; None en filas anteriores a esta columna."
+    )
 
 
 class ReceiptMatch(BaseModel):
